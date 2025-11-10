@@ -1,7 +1,9 @@
 package com.example.studenthub.ui.stats
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
@@ -103,22 +105,30 @@ fun StatsScreen() {
 fun ChartContent(selectedSubjects: List<Subject>) {
     val assignments = MockData.assignments
 
+    // Phantom data point to create space at the start of the chart
+    val phantomData = BarData(
+        point = Point(0f, 0f),
+        label = "",
+        color = Color.Transparent
+    )
+
     val barData: List<BarData> = when {
         selectedSubjects.size == 1 -> {
             val subject = selectedSubjects.first()
-            assignments.filter { it.subjectId == subject.id }.mapIndexed { index, assignment ->
+            val realData = assignments.filter { it.subjectId == subject.id }.mapIndexed { index, assignment ->
                 BarData(
-                    point = Point(index.toFloat(), assignment.grade),
+                    point = Point((index + 1).toFloat(), assignment.grade),
                     label = "Trabajo ${index + 1}",
                     color = Color(0xFF1976D2)
                 )
             }
+            listOf(phantomData) + realData
         }
         else -> {
             val allSubjects = MockData.subjects
             val subjectsToDisplay = if (selectedSubjects.isEmpty()) allSubjects else selectedSubjects
 
-            subjectsToDisplay.mapIndexed { index, subject ->
+            val realData = subjectsToDisplay.mapIndexed { index, subject ->
                 val subjectAssignments = assignments.filter { it.subjectId == subject.id }
                 val average = if (subjectAssignments.isNotEmpty()) {
                     subjectAssignments.map { it.grade }.average().toFloat()
@@ -126,29 +136,34 @@ fun ChartContent(selectedSubjects: List<Subject>) {
                     0f
                 }
                 BarData(
-                    point = Point(index.toFloat(), average),
+                    point = Point((index + 1).toFloat(), average),
                     label = subject.name,
                     color = Color(0xFF1976D2)
                 )
             }
+            listOf(phantomData) + realData
         }
     }
 
     if (barData.isNotEmpty()) {
+        val scrollState = rememberScrollState()
+
         val xAxisData = AxisData.Builder()
             .axisStepSize(100.dp)
-            .steps((barData.size - 1).coerceAtLeast(0))
+            .steps(barData.size - 1)
             .bottomPadding(80.dp)
-            .labelData { index -> barData[index].label }
-            .axisLabelAngle(270f)
+            .labelData { index ->
+                // The label for axis position 'index' corresponds to the data at 'index'
+                if (index < barData.size) barData[index].label else ""
+            }
+            .axisLabelAngle(90f)
             .axisLabelColor(MaterialTheme.colorScheme.onSurface)
             .build()
 
         val yAxisData = AxisData.Builder()
             .steps(5)
             .labelAndAxisLinePadding(20.dp)
-            .axisOffset(20.dp)
-            .labelData { index -> (index * (5.0 / 5.0)).toFloat().toString() } // Assuming max grade is 5.0
+            .labelData { index -> (index * (5.0 / 5.0)).toFloat().toString() }
             .axisLabelColor(MaterialTheme.colorScheme.onSurface)
             .build()
 
@@ -162,12 +177,19 @@ fun ChartContent(selectedSubjects: List<Subject>) {
             backgroundColor = MaterialTheme.colorScheme.surface
         )
 
-        BarChart(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(400.dp),
-            barChartData = barChartData
-        )
+                .horizontalScroll(scrollState)
+        ) {
+            val chartWidth = (barData.size * 100).dp
+            BarChart(
+                modifier = Modifier
+                    .width(chartWidth)
+                    .height(400.dp),
+                barChartData = barChartData
+            )
+        }
     } else {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No hay datos para mostrar")
