@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -39,7 +39,7 @@ fun AssignmentsScreen(
         ) {
             Text("Assignments List", style = MaterialTheme.typography.titleMedium)
             IconButton(onClick = { navController.navigate(Screen.AssignmentRegistration.route) }) {
-                Icon(Icons.Default.Add, contentDescription = "Add Assignment")
+                Icon(Icons.Filled.AddCircle, contentDescription = "Add Assignment")
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
