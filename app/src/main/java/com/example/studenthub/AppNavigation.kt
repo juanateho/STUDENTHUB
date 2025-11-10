@@ -47,11 +47,14 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.studenthub.ui.assignments.AssignmentRegistrationScreen
 import com.example.studenthub.ui.assignments.AssignmentsScreen
+import com.example.studenthub.ui.grades.GradesScreen
 import com.example.studenthub.ui.login.LoginScreen
 import com.example.studenthub.ui.main.MainScreen
 import com.example.studenthub.ui.main.NotificationsDrawer
 import com.example.studenthub.ui.main.ProfileDrawer
 import com.example.studenthub.ui.profile.ProfileScreen
+import com.example.studenthub.ui.reminders.ReminderRegistrationScreen
+import com.example.studenthub.ui.stats.StatsScreen
 import com.example.studenthub.ui.subjects.SubjectRegistrationScreen
 import com.example.studenthub.ui.subjects.SubjectsScreen
 import com.example.studenthub.ui.teachers.TeacherRegistrationScreen
@@ -73,10 +76,14 @@ sealed class Screen(val route: String, val icon: ImageVector? = null) {
     object SubjectEdit : Screen("subject_edit/{subjectId}") {
         fun createRoute(subjectId: String): String = "subject_edit/$subjectId"
     }
+    object Grades : Screen("grades/{subjectId}") {
+        fun createRoute(subjectId: String): String = "grades/$subjectId"
+    }
     object TeacherRegistration : Screen("teacher_registration")
     object TeacherEdit : Screen("teacher_edit/{teacherId}") {
         fun createRoute(teacherId: String): String = "teacher_edit/$teacherId"
     }
+    object ReminderRegistration : Screen("reminder_registration")
     object Home : Screen("home", Icons.Filled.Home)
     object Subjects : Screen("subjects", Icons.Filled.MenuBook)
     object Calendar : Screen("calendar", Icons.Filled.CalendarToday)
@@ -157,6 +164,19 @@ fun AppNavigation() {
                 onBack = { navController.popBackStack() }
             )
         }
+        composable(Screen.ReminderRegistration.route) {
+            ReminderRegistrationScreen(onBack = { navController.popBackStack() })
+        }
+        composable(
+            route = Screen.Grades.route,
+            arguments = listOf(navArgument("subjectId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val subjectId = backStackEntry.arguments?.getString("subjectId")
+            GradesScreen(
+                subjectId = subjectId ?: "",
+                onBack = { navController.popBackStack() }
+            )
+        }
     }
 }
 
@@ -176,6 +196,10 @@ fun MainAppScaffold(appNavController: NavController) {
 
     val onProfileEdit: (String) -> Unit = { userId ->
         appNavController.navigate(Screen.Profile.createRoute(userId))
+    }
+
+    val onAddReminder: () -> Unit = {
+        appNavController.navigate(Screen.ReminderRegistration.route)
     }
 
     Scaffold(
@@ -251,7 +275,10 @@ fun MainAppScaffold(appNavController: NavController) {
                         drawerState = notificationsDrawerState,
                         drawerContent = {
                             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                NotificationsDrawer(modifier = Modifier.fillMaxWidth(0.8f))
+                                NotificationsDrawer(
+                                    onAddReminder = onAddReminder,
+                                    modifier = Modifier.fillMaxWidth(0.8f)
+                                )
                             }
                         },
                     ) {
@@ -261,12 +288,12 @@ fun MainAppScaffold(appNavController: NavController) {
                                 startDestination = Screen.Home.route,
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                composable(Screen.Home.route) { MainScreen() } // Removed navController
+                                composable(Screen.Home.route) { MainScreen() }
                                 composable(Screen.Subjects.route) { SubjectsScreen(navController = appNavController) }
                                 composable(Screen.List.route) { AssignmentsScreen(navController = appNavController) }
                                 // Add other composables for bottom nav items here
                                 composable(Screen.Calendar.route) { Text("Calendar Screen") }
-                                composable(Screen.Stats.route) { Text("Stats Screen") }
+                                composable(Screen.Stats.route) { StatsScreen() }
                             }
                         }
                     }

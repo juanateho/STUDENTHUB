@@ -121,7 +121,10 @@ fun ProfileInfo(label: String, value: String) {
 }
 
 @Composable
-fun NotificationsDrawer(modifier: Modifier = Modifier) {
+fun NotificationsDrawer(
+    modifier: Modifier = Modifier,
+    onAddReminder: () -> Unit = {}
+) {
     ModalDrawerSheet(modifier) {
         Column(
             modifier = Modifier
@@ -143,7 +146,7 @@ fun NotificationsDrawer(modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Reminders", style = MaterialTheme.typography.titleMedium)
-                IconButton(onClick = { /*TODO*/ }) {
+                IconButton(onClick = onAddReminder) {
                     Icon(Icons.Filled.AddCircle, contentDescription = "Add Reminder")
                 }
             }

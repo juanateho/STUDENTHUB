@@ -97,7 +97,9 @@ fun SubjectListItem(modifier: Modifier = Modifier, navController: NavController?
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Filled.EmojiEvents, contentDescription = "Grade", tint = MaterialTheme.colorScheme.secondary)
+                IconButton(onClick = { navController?.navigate(Screen.Grades.createRoute(subjectId)) }) {
+                    Icon(Icons.Filled.EmojiEvents, contentDescription = "Grade", tint = MaterialTheme.colorScheme.secondary)
+                }
                 IconButton(onClick = { navController?.navigate(Screen.SubjectEdit.createRoute(subjectId)) }) {
                     Icon(Icons.Filled.Edit, contentDescription = "Edit")
                 }
