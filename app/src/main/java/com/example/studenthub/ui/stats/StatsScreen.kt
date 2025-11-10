@@ -1,7 +1,9 @@
 package com.example.studenthub.ui.stats
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,7 +22,6 @@ import com.example.studenthub.data.model.Subject
 @Composable
 fun StatsScreen() {
     val subjects = MockData.subjects
-    val assignments = MockData.assignments
 
     var expanded by remember { mutableStateOf(false) }
     var selectedSubjects by remember { mutableStateOf<List<Subject>>(emptyList()) }
@@ -30,42 +31,64 @@ fun StatsScreen() {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text("Estadísticas de Notas", style = MaterialTheme.typography.titleLarge)
+        Text("Semester grades", style = MaterialTheme.typography.titleLarge)
         Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Sort by:")
 
         ExposedDropdownMenuBox(
             expanded = expanded,
             onExpandedChange = { expanded = !expanded }
         ) {
             TextField(
-                value = if (selectedSubjects.isEmpty()) "Todas las materias" else selectedSubjects.joinToString { it.name },
+                value = if (selectedSubjects.isEmpty()) "All subjects" else selectedSubjects.joinToString { it.name },
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Filtrar por materia") },
+                label = { Text("Filter by subject") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier
-                    .menuAnchor()
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
                     .fillMaxWidth()
             )
             ExposedDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false }
             ) {
-                DropdownMenuItem(
-                    text = { Text("Todas las materias") },
-                    onClick = {
-                        selectedSubjects = emptyList()
-                        expanded = false
-                    }
-                )
                 subjects.forEach { subject ->
-                    DropdownMenuItem(
-                        text = { Text(subject.name) },
-                        onClick = {
-                            selectedSubjects = listOf(subject)
-                            expanded = false
-                        }
-                    )
+                    val allSelected = selectedSubjects.isEmpty()
+                    val isSelected = allSelected || selectedSubjects.contains(subject)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (isSelected) {
+                                    // Uncheck
+                                    if (allSelected) {
+                                        selectedSubjects = subjects.filter { it != subject }
+                                    } else {
+                                        selectedSubjects = selectedSubjects - subject
+                                    }
+                                } else {
+                                    // Check
+                                    val newSelection = selectedSubjects + subject
+                                    if (newSelection.size == subjects.size) {
+                                        selectedSubjects = emptyList()
+                                    } else {
+                                        selectedSubjects = newSelection
+                                    }
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = null // The row is clickable
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(subject.name)
+                    }
                 }
             }
         }
@@ -115,8 +138,10 @@ fun ChartContent(selectedSubjects: List<Subject>) {
         val xAxisData = AxisData.Builder()
             .axisStepSize(100.dp)
             .steps((barData.size - 1).coerceAtLeast(0))
-            .bottomPadding(40.dp)
+            .bottomPadding(80.dp)
             .labelData { index -> barData[index].label }
+            .axisLabelAngle(270f)
+            .axisLabelColor(MaterialTheme.colorScheme.onSurface)
             .build()
 
         val yAxisData = AxisData.Builder()
@@ -124,6 +149,7 @@ fun ChartContent(selectedSubjects: List<Subject>) {
             .labelAndAxisLinePadding(20.dp)
             .axisOffset(20.dp)
             .labelData { index -> (index * (5.0 / 5.0)).toFloat().toString() } // Assuming max grade is 5.0
+            .axisLabelColor(MaterialTheme.colorScheme.onSurface)
             .build()
 
         val barChartData = BarChartData(
@@ -133,13 +159,13 @@ fun ChartContent(selectedSubjects: List<Subject>) {
             barStyle = BarStyle(
                 barWidth = 35.dp
             ),
-            backgroundColor = Color.White
+            backgroundColor = MaterialTheme.colorScheme.surface
         )
 
         BarChart(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(300.dp),
+                .height(400.dp),
             barChartData = barChartData
         )
     } else {
