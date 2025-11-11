@@ -1,15 +1,25 @@
 package com.example.studenthub.ui.assignments
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.studenthub.ui.dialogs.DatePickerDialog
+import java.text.SimpleDateFormat
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -21,12 +31,35 @@ fun AssignmentRegistrationScreen(
     var assignmentName by remember { mutableStateOf("") }
     var subjectName by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var dueDate by remember { mutableStateOf("") }
-    var dueTime by remember { mutableStateOf("") }
+    var dueDate by remember { mutableStateOf<Date?>(null) }
+    var dueTime by remember { mutableStateOf<LocalTime?>(null) }
     var subjectExpanded by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     // Dummy subject list
     val subjects = listOf("Mathematics", "Physics", "Chemistry", "History")
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            onDateSelected = {
+                dueDate = it
+                showDatePicker = false
+            }
+        )
+    }
+
+    if (showTimePicker) {
+        TimePickerDialog(
+            onDismissRequest = { showTimePicker = false },
+            onTimeSelected = {
+                dueTime = it
+                showTimePicker = false
+            }
+        )
+    }
+
 
     LaunchedEffect(assignmentId) {
         if (assignmentId != null) {
@@ -34,8 +67,8 @@ fun AssignmentRegistrationScreen(
             assignmentName = "Existing Assignment"
             subjectName = "Mathematics"
             description = "Chapter 5 exercises from the main book."
-            dueDate = "12/25/2024"
-            dueTime = "10:00 PM"
+            dueDate = Date()
+            dueTime = LocalTime.of(22, 0)
         }
     }
 
@@ -108,6 +141,8 @@ fun AssignmentRegistrationScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(16.dp))
+            Text("Delivery date")
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -115,17 +150,39 @@ fun AssignmentRegistrationScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
-                    value = dueDate,
-                    onValueChange = { dueDate = it },
+                    value = dueDate?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(it) } ?: "",
+                    onValueChange = { },
                     label = { Text("Due Date") },
-                    modifier = Modifier.weight(1f)
+                    readOnly = true,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { showDatePicker = true },
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(
+                                imageVector = Icons.Default.DateRange,
+                                contentDescription = "Select Date"
+                            )
+                        }
+                    }
                 )
 
                 OutlinedTextField(
-                    value = dueTime,
-                    onValueChange = { dueTime = it },
+                    value = dueTime?.format(DateTimeFormatter.ofPattern("h:mm a")) ?: "",
+                    onValueChange = { },
                     label = { Text("Due Time") },
-                    modifier = Modifier.weight(1f)
+                    readOnly = true,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { showTimePicker = true },
+                    trailingIcon = {
+                        IconButton(onClick = { showTimePicker = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = "Select Time"
+                            )
+                        }
+                    }
                 )
             }
 
@@ -139,4 +196,34 @@ fun AssignmentRegistrationScreen(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimePickerDialog(
+    onDismissRequest: () -> Unit,
+    onTimeSelected: (LocalTime) -> Unit
+) {
+    val timeState = rememberTimePickerState()
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text("Select Time") },
+        text = {
+            TimePicker(state = timeState)
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onTimeSelected(LocalTime.of(timeState.hour, timeState.minute))
+                }
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismissRequest) {
+                Text("Cancel")
+            }
+        }
+    )
 }
