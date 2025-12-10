@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "707828649744",
+    "project_id": "studenthub-ea649",
+    "storage_bucket": "studenthub-ea649.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:707828649744:android:ecc07a63777efe1b585f95",
+        "android_client_info": {
+          "package_name": "com.example.studenthub"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "707828649744-rofuqi1phjkjh3k9gomlbq16uj3fsdho.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.studenthub",
+            "certificate_hash": "d040df51a5811654a53be67bc00c443dfaa5f11c"
+          }
+        },
+        {
+          "client_id": "707828649744-jjaecd4kvb3m9sc934mrc0okjfq69jju.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBNQ_RtcFe6FnY2KO18MVGGNphv-PeB-zI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "707828649744-jjaecd4kvb3m9sc934mrc0okjfq69jju.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
