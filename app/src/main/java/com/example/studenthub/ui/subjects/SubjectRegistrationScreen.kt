@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
@@ -37,7 +37,7 @@ fun SubjectRegistrationScreen(
     var selectedTeacherName by remember { mutableStateOf("") }
     var scheduleList by remember { mutableStateOf<List<ScheduleItem>>(emptyList()) }
     var teachersList by remember { mutableStateOf<List<Teacher>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) } // For initial load
+    var isLoading by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var expandedTeacherDropdown by remember { mutableStateOf(false) }
 
@@ -46,21 +46,14 @@ fun SubjectRegistrationScreen(
     val auth = Firebase.auth
     val user = auth.currentUser
 
-    // List of days
     val daysOfWeek = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
-    // Load initial data (Teachers and Subject if editing)
     LaunchedEffect(key1 = user) {
         if (user != null) {
             isLoading = true
-            // Load Teachers first
-            db.collection("teachers")
-                .whereEqualTo("userId", user.uid)
-                .get()
+            db.collection("teachers").whereEqualTo("userId", user.uid).get()
                 .addOnSuccessListener { result ->
                     teachersList = result.documents.mapNotNull { it.toObject<Teacher>() }
-                    
-                    // If editing, load subject data
                     if (subjectId != null) {
                         db.collection("subjects").document(subjectId).get()
                             .addOnSuccessListener { document ->
@@ -68,14 +61,9 @@ fun SubjectRegistrationScreen(
                                     subjectName = document.getString("name") ?: ""
                                     selectedTeacherName = document.getString("teacherName") ?: ""
                                     selectedTeacherId = document.getString("teacherId") ?: ""
-                                    
                                     val items = document.get("schedule") as? List<Map<String, String>>
                                     scheduleList = items?.map {
-                                        ScheduleItem(
-                                            day = it["day"] ?: "",
-                                            startTime = it["startTime"] ?: "",
-                                            endTime = it["endTime"] ?: ""
-                                        )
+                                        ScheduleItem(day = it["day"] ?: "", startTime = it["startTime"] ?: "", endTime = it["endTime"] ?: "")
                                     } ?: emptyList()
                                 }
                                 isLoading = false
@@ -101,23 +89,14 @@ fun SubjectRegistrationScreen(
             title = { Text("Delete Subject") },
             text = { Text("Are you sure you want to delete this subject? This action cannot be undone.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteConfirmation = false
-                        // Optimistic Delete
-                        db.collection("subjects").document(subjectId).delete()
-                        Toast.makeText(context, "Subject deleted", Toast.LENGTH_SHORT).show()
-                        onBack()
-                    }
-                ) {
-                    Text("Delete")
-                }
+                TextButton(onClick = {
+                    showDeleteConfirmation = false
+                    db.collection("subjects").document(subjectId).delete()
+                    Toast.makeText(context, "Subject deleted", Toast.LENGTH_SHORT).show()
+                    onBack()
+                }) { Text("Delete") }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmation = false }) {
-                    Text("Cancel")
-                }
-            }
+            dismissButton = { TextButton(onClick = { showDeleteConfirmation = false }) { Text("Cancel") } }
         )
     }
 
@@ -125,11 +104,7 @@ fun SubjectRegistrationScreen(
         topBar = {
             TopAppBar(
                 title = { Text(if (subjectId == null) "Add Subject" else "Edit Subject") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } },
                 actions = {
                     if (subjectId != null) {
                         IconButton(onClick = { showDeleteConfirmation = true }) {
@@ -141,10 +116,7 @@ fun SubjectRegistrationScreen(
         }
     ) { paddingValues ->
         Column(
-            modifier = modifier
-                .padding(paddingValues)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState())
+            modifier = modifier.padding(paddingValues).padding(16.dp).verticalScroll(rememberScrollState())
         ) {
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -152,48 +124,21 @@ fun SubjectRegistrationScreen(
                 Text("Please enter the details of the subject below")
                 Spacer(modifier = Modifier.height(16.dp))
 
-                OutlinedTextField(
-                    value = subjectName,
-                    onValueChange = { subjectName = it },
-                    label = { Text("Subject's name") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
+                OutlinedTextField(value = subjectName, onValueChange = { subjectName = it }, label = { Text("Subject's name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Teacher Dropdown
-                ExposedDropdownMenuBox(
-                    expanded = expandedTeacherDropdown,
-                    onExpandedChange = { expandedTeacherDropdown = it },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    OutlinedTextField(
-                        value = selectedTeacherName,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Teacher") },
-                        trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = expandedTeacherDropdown,
-                        onDismissRequest = { expandedTeacherDropdown = false }
-                    ) {
+                ExposedDropdownMenuBox(expanded = expandedTeacherDropdown, onExpandedChange = { expandedTeacherDropdown = it }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(value = selectedTeacherName, onValueChange = {}, readOnly = true, label = { Text("Teacher") }, trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) }, modifier = Modifier.menuAnchor().fillMaxWidth())
+                    ExposedDropdownMenu(expanded = expandedTeacherDropdown, onDismissRequest = { expandedTeacherDropdown = false }) {
                         if (teachersList.isEmpty()) {
-                             DropdownMenuItem(
-                                text = { Text("No teachers found. Add one first.") },
-                                onClick = { expandedTeacherDropdown = false }
-                            )
+                            DropdownMenuItem(text = { Text("No teachers found. Add one first.") }, onClick = { expandedTeacherDropdown = false })
                         } else {
                             teachersList.forEach { teacher ->
-                                DropdownMenuItem(
-                                    text = { Text(teacher.name) },
-                                    onClick = {
-                                        selectedTeacherName = teacher.name
-                                        selectedTeacherId = teacher.id
-                                        expandedTeacherDropdown = false
-                                    }
-                                )
+                                DropdownMenuItem(text = { Text(teacher.name) }, onClick = {
+                                    selectedTeacherName = teacher.name
+                                    selectedTeacherId = teacher.id
+                                    expandedTeacherDropdown = false
+                                })
                             }
                         }
                     }
@@ -205,28 +150,20 @@ fun SubjectRegistrationScreen(
 
                 daysOfWeek.forEach { day ->
                     var isChecked by remember { mutableStateOf(scheduleList.any { it.day == day }) }
-                    LaunchedEffect(scheduleList) {
-                        isChecked = scheduleList.any { it.day == day }
-                    }
+                    LaunchedEffect(scheduleList) { isChecked = scheduleList.any { it.day == day } }
 
                     Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Checkbox(
-                                checked = isChecked,
-                                onCheckedChange = { checked ->
-                                    isChecked = checked
-                                    if (checked) {
-                                        if (scheduleList.none { it.day == day }) {
-                                            scheduleList = scheduleList + ScheduleItem(day, "08:00", "10:00")
-                                        }
-                                    } else {
-                                        scheduleList = scheduleList.filter { it.day != day }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Checkbox(checked = isChecked, onCheckedChange = { checked ->
+                                isChecked = checked
+                                if (checked) {
+                                    if (scheduleList.none { it.day == day }) {
+                                        scheduleList = scheduleList + ScheduleItem(day, "08:00", "09:00")
                                     }
+                                } else {
+                                    scheduleList = scheduleList.filter { it.day != day }
                                 }
-                            )
+                            })
                             Text(day, style = MaterialTheme.typography.bodyLarge)
                         }
 
@@ -234,39 +171,20 @@ fun SubjectRegistrationScreen(
                             val item = scheduleList.find { it.day == day }
                             if (item != null) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 48.dp, bottom = 8.dp, end = 8.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(start = 48.dp, bottom = 8.dp, end = 8.dp),
                                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    TimePickerButton(
-                                        label = "Start",
-                                        time = item.startTime,
-                                        onTimeSelected = { newTime ->
-                                            if (item.endTime.isNotEmpty() && newTime >= item.endTime) {
-                                                Toast.makeText(context, "Start time must be before end time", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                scheduleList = scheduleList.map {
-                                                    if (it.day == day) it.copy(startTime = newTime) else it
-                                                }
-                                            }
-                                        },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    TimePickerButton(
-                                        label = "End",
-                                        time = item.endTime,
-                                        onTimeSelected = { newTime ->
-                                            if (item.startTime.isNotEmpty() && newTime <= item.startTime) {
-                                                Toast.makeText(context, "End time must be after start time", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                scheduleList = scheduleList.map {
-                                                    if (it.day == day) it.copy(endTime = newTime) else it
-                                                }
-                                            }
-                                        },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    TimePickerButton(label = "Start", time = item.startTime, onTimeSelected = { newTime ->
+                                        val newEndTime = String.format("%02d:%02d", (newTime.split(":")[0].toInt() + 1) % 24, newTime.split(":")[1].toInt())
+                                        scheduleList = scheduleList.map {
+                                            if (it.day == day) it.copy(startTime = newTime, endTime = newEndTime) else it
+                                        }
+                                    }, modifier = Modifier.weight(1f))
+                                    TimePickerButton(label = "End", time = item.endTime, onTimeSelected = { newTime ->
+                                        scheduleList = scheduleList.map {
+                                            if (it.day == day) it.copy(endTime = newTime) else it
+                                        }
+                                    }, modifier = Modifier.weight(1f))
                                 }
                             }
                         }
@@ -275,26 +193,22 @@ fun SubjectRegistrationScreen(
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
-                
                 Button(
                     onClick = {
                         if (user == null) {
                             Toast.makeText(context, "User not logged in", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
-
                         if (subjectName.isBlank()) {
                             Toast.makeText(context, "Please enter a subject name", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
-
                         val invalidSchedule = scheduleList.any { it.startTime >= it.endTime }
                         if (invalidSchedule) {
                             Toast.makeText(context, "Check schedules: End time must be after Start time", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
 
-                        // Fire and forget - Optimistic UX
                         val id = subjectId ?: UUID.randomUUID().toString()
                         val subjectData = hashMapOf(
                             "id" to id,
@@ -304,28 +218,19 @@ fun SubjectRegistrationScreen(
                             "teacherId" to selectedTeacherId,
                             "userId" to user.uid
                         )
-
                         db.collection("subjects").document(id).set(subjectData)
-                        
                         Toast.makeText(context, "Subject saved", Toast.LENGTH_SHORT).show()
                         onBack()
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Save")
-                }
+                ) { Text("Save") }
             }
         }
     }
 }
 
 @Composable
-fun TimePickerButton(
-    label: String,
-    time: String,
-    onTimeSelected: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun TimePickerButton(label: String, time: String, onTimeSelected: (String) -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val parts = time.split(":")
     val initialHour = if (parts.size == 2) parts[0].toIntOrNull() ?: 8 else 8
@@ -337,15 +242,10 @@ fun TimePickerButton(
             val formattedTime = String.format("%02d:%02d", hourOfDay, minute)
             onTimeSelected(formattedTime)
         },
-        initialHour,
-        initialMinute,
-        true
+        initialHour, initialMinute, true
     )
 
-    OutlinedButton(
-        onClick = { timePickerDialog.show() },
-        modifier = modifier
-    ) {
+    OutlinedButton(onClick = { timePickerDialog.show() }, modifier = modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, style = MaterialTheme.typography.labelSmall)
             Text(time, style = MaterialTheme.typography.bodyMedium)

@@ -5,7 +5,19 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -16,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,15 +44,20 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import com.example.studenthub.Screen
 import com.example.studenthub.data.Assignment
 import com.example.studenthub.data.Notification
 import com.example.studenthub.data.Reminder
+import com.example.studenthub.data.Subject
 import com.example.studenthub.ui.theme.STUDENTHUBTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.firestore.ktx.toObjects
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,39 +69,94 @@ import java.util.Locale
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun MainScreen(modifier: Modifier = Modifier) {
+fun MainScreen(
+    appNavController: NavController,
+    bottomNavController: NavController,
+    onOpenNotifications: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val auth = Firebase.auth
+    val db = Firebase.firestore
+    val user = auth.currentUser
+
+    var todaySubjects by remember { mutableStateOf<List<Subject>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(user) {
+        if (user != null) {
+            val currentDayName = LocalDate.now().dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+
+            db.collection("subjects")
+                .whereEqualTo("userId", user.uid)
+                .addSnapshotListener { snapshot, e ->
+                    if (e != null) {
+                        isLoading = false
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null) {
+                        val allSubjects = snapshot.toObjects<Subject>()
+                        todaySubjects = allSubjects.filter { subject ->
+                            subject.schedule.any { scheduleItem ->
+                                scheduleItem.day.equals(currentDayName, ignoreCase = true)
+                            }
+                        }
+                    }
+                    isLoading = false
+                }
+        } else {
+            isLoading = false
+            todaySubjects = emptyList()
+        }
+    }
+
     Column(
         modifier = modifier
             .padding(16.dp)
             .fillMaxHeight()
     ) {
-        // Today Subjects
-        Text("Today Subjects", style = MaterialTheme.typography.titleMedium)
+        Text("Today's Subjects", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(16.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Box(modifier = Modifier.weight(1f)) {
-                SubjectCard(subject = "Math", time = "1h 30m", icon = Icons.Filled.Book)
-            }
-            Box(modifier = Modifier.weight(1f)) {
-                SubjectCard(
-                    subject = "Chemistry",
-                    time = "2h 00m",
-                    icon = Icons.Filled.Science
-                )
+
+        if (isLoading) {
+            CircularProgressIndicator()
+        } else if (todaySubjects.isEmpty()) {
+            Text("No subjects scheduled for today.", style = MaterialTheme.typography.bodyMedium)
+        } else {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(todaySubjects) { subject ->
+                    val scheduleItem = subject.schedule.first { it.day.equals(LocalDate.now().dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault()), ignoreCase = true) }
+                    val time = "${scheduleItem.startTime} - ${scheduleItem.endTime}"
+                    val icon = when (subject.name.lowercase()) {
+                        "math" -> Icons.Filled.Calculate
+                        "chemistry" -> Icons.Filled.Science
+                        "history" -> Icons.Filled.AccountBalance
+                        "english" -> Icons.Filled.Spellcheck
+                        else -> Icons.Filled.Book
+                    }
+
+                    Box(modifier = Modifier.width(180.dp)) {
+                        SubjectCard(subject = subject.name, time = time, icon = icon) {
+                            appNavController.navigate(Screen.Grades.createRoute(subject.id))
+                        }
+                    }
+                }
             }
         }
+
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Categories
         Text("Categories", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(16.dp))
-        Categories()
+        Categories(
+            appNavController = appNavController,
+            bottomNavController = bottomNavController,
+            onOpenNotifications = onOpenNotifications
+        )
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Calendar
         Text("Calendar", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(16.dp))
         CalendarView(modifier = Modifier.weight(1f))
@@ -107,39 +180,27 @@ fun ProfileDrawer(
 
     LaunchedEffect(user) {
         if (user != null) {
-            // Count Subjects
-            db.collection("subjects")
-                .whereEqualTo("userId", user.uid)
-                .addSnapshotListener { snapshot, _ ->
-                    if (snapshot != null) {
-                        subjectCount = snapshot.size()
+            db.collection("subjects").whereEqualTo("userId", user.uid).addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) subjectCount = snapshot.size()
+            }
+            db.collection("assignments").whereEqualTo("userId", user.uid).addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    assignmentCount = snapshot.size()
+                    val assignments = snapshot.documents.mapNotNull { it.toObject(Assignment::class.java) }
+                    val graded = assignments.filter { it.grade > 0 }
+                    gradedCount = graded.size
+                    if (graded.isNotEmpty()) {
+                        averageGrade = graded.map { it.grade }.average().toFloat()
+                    } else {
+                        averageGrade = 0.0f
                     }
                 }
-
-            // Count Assignments & Calculate Average
-            db.collection("assignments")
-                .whereEqualTo("userId", user.uid)
-                .addSnapshotListener { snapshot, _ ->
-                    if (snapshot != null) {
-                        assignmentCount = snapshot.size()
-                        val assignments = snapshot.documents.mapNotNull { it.toObject(Assignment::class.java) }
-                        val graded = assignments.filter { it.grade > 0 }
-                        gradedCount = graded.size
-                        if (graded.isNotEmpty()) {
-                            averageGrade = graded.map { it.grade }.average().toFloat()
-                        } else {
-                            averageGrade = 0.0f
-                        }
-                    }
-                }
+            }
         }
     }
 
     ModalDrawerSheet(modifier) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-        ) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -160,10 +221,7 @@ fun ProfileDrawer(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            OutlinedButton(
-                onClick = onLogout,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
                 Text("Log Out")
             }
         }
@@ -197,19 +255,15 @@ fun NotificationsDrawer(
     LaunchedEffect(authState) {
         val currentUser = authState
         if (currentUser != null) {
-            db.collection("reminders")
-                .whereEqualTo("userId", currentUser.uid)
-                .addSnapshotListener { snapshot, e ->
-                    if (e != null) { return@addSnapshotListener }
-                    if (snapshot != null) {
-                        reminders = snapshot.documents.mapNotNull { it.toObject(Reminder::class.java) }
-                    }
+            db.collection("reminders").whereEqualTo("userId", currentUser.uid).addSnapshotListener { snapshot, e ->
+                if (e != null) { return@addSnapshotListener }
+                if (snapshot != null) {
+                    reminders = snapshot.documents.mapNotNull { it.toObject(Reminder::class.java) }
                 }
+            }
 
-            db.collection("notifications")
-                .whereEqualTo("userId", currentUser.uid)
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .limit(20)
+            db.collection("notifications").whereEqualTo("userId", currentUser.uid)
+                .orderBy("timestamp", Query.Direction.DESCENDING).limit(20)
                 .addSnapshotListener { snapshot, e ->
                     if (e != null) { return@addSnapshotListener }
                     if (snapshot != null) {
@@ -223,17 +277,13 @@ fun NotificationsDrawer(
     }
 
     if (editingReminder != null) {
-        EditReminderDialog(
-            reminder = editingReminder!!,
-            onDismiss = { editingReminder = null },
-            onSave = { updatedReminder ->
-                db.collection("reminders").document(updatedReminder.id).set(updatedReminder)
-                    .addOnSuccessListener {
-                        Toast.makeText(context, "Reminder updated", Toast.LENGTH_SHORT).show()
-                    }
-                editingReminder = null
+        EditReminderDialog(reminder = editingReminder!!, onDismiss = { editingReminder = null }) {
+            updatedReminder ->
+            db.collection("reminders").document(updatedReminder.id).set(updatedReminder).addOnSuccessListener {
+                Toast.makeText(context, "Reminder updated", Toast.LENGTH_SHORT).show()
             }
-        )
+            editingReminder = null
+        }
     }
 
     if (showDeleteConfirmation != null) {
@@ -242,18 +292,15 @@ fun NotificationsDrawer(
             title = { Text("Delete Reminder") },
             text = { Text("Are you sure you want to delete this reminder?") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        val reminderToDelete = showDeleteConfirmation
-                        if (reminderToDelete != null) {
-                            db.collection("reminders").document(reminderToDelete.id).delete()
-                                .addOnSuccessListener {
-                                    Toast.makeText(context, "Reminder deleted", Toast.LENGTH_SHORT).show()
-                                }
+                TextButton(onClick = {
+                    val reminderToDelete = showDeleteConfirmation
+                    if (reminderToDelete != null) {
+                        db.collection("reminders").document(reminderToDelete.id).delete().addOnSuccessListener {
+                            Toast.makeText(context, "Reminder deleted", Toast.LENGTH_SHORT).show()
                         }
-                        showDeleteConfirmation = null
                     }
-                ) {
+                    showDeleteConfirmation = null
+                }) {
                     Text("Delete")
                 }
             },
@@ -267,10 +314,7 @@ fun NotificationsDrawer(
 
     ModalDrawerSheet(modifier) {
         Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxHeight()
-                .verticalScroll(rememberScrollState())
+            modifier = Modifier.padding(16.dp).fillMaxHeight().verticalScroll(rememberScrollState())
         ) {
             Text("Notifications", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(16.dp))
@@ -311,14 +355,9 @@ fun NotificationsDrawer(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     reminders.forEach { reminder ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { editingReminder = reminder }
-                        ) {
+                        Card(modifier = Modifier.fillMaxWidth().clickable { editingReminder = reminder }) {
                             Row(
-                                modifier = Modifier
-                                    .padding(16.dp)
-                                    .fillMaxWidth(),
+                                modifier = Modifier.padding(16.dp).fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -339,11 +378,7 @@ fun NotificationsDrawer(
 }
 
 @Composable
-fun EditReminderDialog(
-    reminder: Reminder,
-    onDismiss: () -> Unit,
-    onSave: (Reminder) -> Unit
-) {
+fun EditReminderDialog(reminder: Reminder, onDismiss: () -> Unit, onSave: (Reminder) -> Unit) {
     var title by remember { mutableStateOf(reminder.title) }
     var date by remember { mutableStateOf(reminder.date) }
     var time by remember { mutableStateOf(reminder.time) }
@@ -353,85 +388,71 @@ fun EditReminderDialog(
         title = { Text("Edit Reminder") },
         text = {
             Column {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = date,
-                    onValueChange = { date = it },
-                    label = { Text("Date (YYYY-MM-DD)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = time,
-                    onValueChange = { time = it },
-                    label = { Text("Time (HH:MM)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = time, onValueChange = { time = it }, label = { Text("Time (HH:MM)") }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    onSave(reminder.copy(title = title, date = date, time = time))
-                }
-            ) {
+            Button(onClick = { onSave(reminder.copy(title = title, date = date, time = time)) }) {
                 Text("Save")
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
 @Composable
-fun SubjectCard(subject: String, time: String, icon: ImageVector) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(100.dp),
-    ) {
+fun SubjectCard(subject: String, time: String, icon: ImageVector, onClick: () -> Unit) {
+    Card(modifier = Modifier
+        .fillMaxWidth()
+        .height(100.dp)
+        .clickable(onClick = onClick)) {
         Column(modifier = Modifier.padding(12.dp)) {
             Icon(imageVector = icon, contentDescription = null)
             Text(subject, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.weight(1f))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(imageVector = Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(time, fontSize = 12.sp)
                 Spacer(modifier = Modifier.weight(1f))
-                Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
             }
         }
     }
 }
 
 @Composable
-fun Categories() {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item { CategoryItem(name = "Assignments", icon = Icons.Filled.List) }
-        item { CategoryItem(name = "Grades", icon = Icons.Filled.Assessment) }
-        item { CategoryItem(name = "Calendar", icon = Icons.Filled.CalendarToday) }
-        item { CategoryItem(name = "Reminders", icon = Icons.Filled.Notifications) }
+fun Categories(
+    appNavController: NavController,
+    bottomNavController: NavController,
+    onOpenNotifications: () -> Unit
+) {
+    val navigateToBottomTab: (String) -> Unit = { route ->
+        bottomNavController.navigate(route) {
+            popUpTo(bottomNavController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        item { CategoryItem("Assignments", Icons.AutoMirrored.Filled.List) { navigateToBottomTab(Screen.List.route) } }
+        item { CategoryItem("Grades", Icons.Filled.Assessment) { appNavController.navigate(Screen.Grades.createRoute(null)) } }
+        item { CategoryItem("Calendar", Icons.Filled.CalendarToday) { navigateToBottomTab(Screen.Calendar.route) } }
+        item { CategoryItem("Reminders", Icons.Filled.Notifications) { onOpenNotifications() } }
     }
 }
 
 @Composable
-fun CategoryItem(name: String, icon: ImageVector) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Card(
-            modifier = Modifier.size(80.dp),
-        ) {
+fun CategoryItem(name: String, icon: ImageVector, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick)) {
+        Card(modifier = Modifier.size(80.dp)) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(imageVector = icon, contentDescription = name, modifier = Modifier.size(40.dp))
             }
@@ -475,16 +496,13 @@ fun CalendarView(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
-                val daysOfWeek = DayOfWeek.entries.map { it.getDisplayName(TextStyle.SHORT, Locale.getDefault()) }
+                val daysOfWeek = DayOfWeek.values().map { it.getDisplayName(TextStyle.SHORT, Locale.getDefault()) }
                 daysOfWeek.forEach {
                     Text(it, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(7),
-                modifier = Modifier.weight(1f)
-            ) {
+            LazyVerticalGrid(columns = GridCells.Fixed(7), modifier = Modifier.weight(1f)) {
                 items(days.size) { index ->
                     val day = days[index]
                     if (day.isNotEmpty()) {
@@ -492,13 +510,10 @@ fun CalendarView(modifier: Modifier = Modifier) {
                         val isToday = date == LocalDate.now()
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isToday) MaterialTheme.colorScheme.primary
-                                    else Color.Transparent
-                                )
+                            modifier = Modifier.aspectRatio(1f).clip(CircleShape).background(
+                                if (isToday) MaterialTheme.colorScheme.primary
+                                else Color.Transparent
+                            )
                         ) {
                             Text(
                                 text = day,
@@ -520,7 +535,7 @@ fun CalendarView(modifier: Modifier = Modifier) {
 @Composable
 fun MainScreenPreview() {
     STUDENTHUBTheme {
-        MainScreen()
+        // MainScreen() // Requires NavController, cannot be previewed directly
     }
 }
 

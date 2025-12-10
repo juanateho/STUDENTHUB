@@ -10,12 +10,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.BottomAppBar
@@ -84,8 +84,10 @@ sealed class Screen(val route: String, val icon: ImageVector? = null) {
     object SubjectEdit : Screen("subject_edit/{subjectId}") {
         fun createRoute(subjectId: String): String = "subject_edit/$subjectId"
     }
-    object Grades : Screen("grades/{subjectId}") {
-        fun createRoute(subjectId: String): String = "grades/$subjectId"
+    object Grades : Screen("grades?subjectId={subjectId}") {
+        fun createRoute(subjectId: String?): String {
+            return if (subjectId != null) "grades?subjectId=$subjectId" else "grades"
+        }
     }
     object TeacherRegistration : Screen("teacher_registration")
     object TeacherEdit : Screen("teacher_edit/{teacherId}") {
@@ -93,10 +95,10 @@ sealed class Screen(val route: String, val icon: ImageVector? = null) {
     }
     object ReminderRegistration : Screen("reminder_registration")
     object Home : Screen("home", Icons.Filled.Home)
-    object Subjects : Screen("subjects", Icons.Filled.MenuBook)
+    object Subjects : Screen("subjects", Icons.AutoMirrored.Filled.MenuBook)
     object Calendar : Screen("calendar", Icons.Filled.CalendarToday)
     object Stats : Screen("stats", Icons.Filled.BarChart)
-    object List : Screen("list", Icons.Filled.Work)
+    object List : Screen("list", Icons.AutoMirrored.Filled.List)
 }
 
 val bottomNavItems = listOf(
@@ -111,7 +113,6 @@ val bottomNavItems = listOf(
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    // Determine start destination based on authentication state
     val currentUser = Firebase.auth.currentUser
     val startDestination = if (currentUser != null) Screen.Main.route else Screen.Login.route
 
@@ -129,16 +130,15 @@ fun AppNavigation() {
     }
 
     val onProfileEdit: (String) -> Unit = { userId ->
-        scope.launch { profileDrawerState.close() } // Close drawer before navigating
+        scope.launch { profileDrawerState.close() }
         navController.navigate(Screen.Profile.createRoute(userId))
     }
-    
+
     val onAddReminder: () -> Unit = {
-        scope.launch { notificationsDrawerState.close() } // Close drawer
+        scope.launch { notificationsDrawerState.close() }
         navController.navigate(Screen.ReminderRegistration.route)
     }
 
-    // Wrap the entire NavHost with drawers so they are accessible from any screen
     ModalNavigationDrawer(
         drawerState = profileDrawerState,
         drawerContent = {
@@ -182,6 +182,16 @@ fun AppNavigation() {
                         }
                         composable(Screen.SignUp.route) {
                             ProfileScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Screen.Grades.route,
+                            arguments = listOf(navArgument("subjectId") { nullable = true; type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val subjectId = backStackEntry.arguments?.getString("subjectId")
+                            GradesScreen(
+                                subjectId = subjectId,
+                                onBack = { navController.popBackStack() }
+                            )
                         }
                         composable(
                             route = Screen.Profile.route,
@@ -244,17 +254,6 @@ fun AppNavigation() {
                         }
                         composable(Screen.ReminderRegistration.route) {
                             ReminderRegistrationScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Screen.Grades.route,
-                            arguments = listOf(navArgument("subjectId") { type = NavType.StringType })
-                        ) { backStackEntry ->
-                            val subjectId = backStackEntry.arguments?.getString("subjectId")
-                            GradesScreen(
-                                subjectId = subjectId ?: "",
-                                onBack = { navController.popBackStack() },
-                                onOpenNotifications = { scope.launch { notificationsDrawerState.open() } }
-                            )
                         }
                     }
                 }
@@ -338,7 +337,7 @@ fun MainAppScaffold(
                 startDestination = Screen.Home.route,
                 modifier = Modifier.fillMaxSize()
             ) {
-                composable(Screen.Home.route) { MainScreen() }
+                composable(Screen.Home.route) { MainScreen(appNavController = appNavController, bottomNavController = bottomNavController, onOpenNotifications = onOpenNotifications) }
                 composable(Screen.Subjects.route) { SubjectsScreen(navController = appNavController) }
                 composable(Screen.List.route) { AssignmentsScreen(navController = appNavController) }
                 composable(Screen.Calendar.route) { CalendarScreen() }
