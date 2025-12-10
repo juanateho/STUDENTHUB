@@ -47,7 +47,7 @@ fun AssignmentRegistrationScreen(
     
     var subjectsList by remember { mutableStateOf<List<Subject>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
-    var isSaving by remember { mutableStateOf(false) }
+    // Removed isSaving state to prevent UI locking, using optimistic navigation instead
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     
     var subjectExpanded by remember { mutableStateOf(false) }
@@ -131,6 +131,7 @@ fun AssignmentRegistrationScreen(
                 TextButton(
                     onClick = {
                         showDeleteConfirmation = false
+                        // Optimistic Delete
                         db.collection("assignments").document(assignmentId).delete()
                         Toast.makeText(context, "Assignment deleted", Toast.LENGTH_SHORT).show()
                         onBack()
@@ -300,48 +301,44 @@ fun AssignmentRegistrationScreen(
 
                 Spacer(modifier = Modifier.weight(1f, fill = true))
 
-                if (isSaving) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-                } else {
-                    Button(
-                        onClick = {
-                            if (user == null) {
-                                Toast.makeText(context, "User not logged in", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            if (assignmentName.isBlank()) {
-                                Toast.makeText(context, "Please enter name", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            if (selectedSubjectId.isBlank()) {
-                                Toast.makeText(context, "Please select a subject", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
+                Button(
+                    onClick = {
+                        if (user == null) {
+                            Toast.makeText(context, "User not logged in", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (assignmentName.isBlank()) {
+                            Toast.makeText(context, "Please enter name", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (selectedSubjectId.isBlank()) {
+                            Toast.makeText(context, "Please select a subject", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
 
-                            isSaving = true
-                            val id = assignmentId ?: UUID.randomUUID().toString()
-                            val assignmentData = hashMapOf(
-                                "id" to id,
-                                "name" to assignmentName,
-                                "subjectId" to selectedSubjectId,
-                                "subjectName" to selectedSubjectName, // Store denormalized name for easier display
-                                "description" to description,
-                                "dueDate" to dueDate,
-                                "dueTime" to dueTime,
-                                "userId" to user.uid
-                            )
+                        // Optimistic Update: Save and Close immediately
+                        val id = assignmentId ?: UUID.randomUUID().toString()
+                        val assignmentData = hashMapOf(
+                            "id" to id,
+                            "name" to assignmentName,
+                            "subjectId" to selectedSubjectId,
+                            "subjectName" to selectedSubjectName, // Store denormalized name for easier display
+                            "description" to description,
+                            "dueDate" to dueDate,
+                            "dueTime" to dueTime,
+                            "userId" to user.uid
+                        )
 
-                            db.collection("assignments").document(id).set(assignmentData)
-                                .addOnCompleteListener {
-                                    isSaving = false
-                                    Toast.makeText(context, "Assignment saved", Toast.LENGTH_SHORT).show()
-                                    onBack()
-                                }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Save")
-                    }
+                        // Fire the request
+                        db.collection("assignments").document(id).set(assignmentData)
+                        
+                        // Navigate back immediately
+                        Toast.makeText(context, "Assignment saved", Toast.LENGTH_SHORT).show()
+                        onBack()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Save")
                 }
             }
         }

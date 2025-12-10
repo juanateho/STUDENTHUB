@@ -1,12 +1,16 @@
 package com.example.studenthub.ui.main
 
 import android.os.Build
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -18,12 +22,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.studenthub.data.Assignment
+import com.example.studenthub.data.Reminder
 import com.example.studenthub.ui.theme.STUDENTHUBTheme
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -77,6 +87,45 @@ fun ProfileDrawer(
     onLogout: () -> Unit = {},
     onProfileEdit: () -> Unit = {}
 ) {
+    val auth = Firebase.auth
+    val db = Firebase.firestore
+    val user = auth.currentUser
+
+    var subjectCount by remember { mutableStateOf(0) }
+    var assignmentCount by remember { mutableStateOf(0) }
+    var gradedCount by remember { mutableStateOf(0) }
+    var averageGrade by remember { mutableStateOf(0.0f) }
+
+    LaunchedEffect(user) {
+        if (user != null) {
+            // Count Subjects
+            db.collection("subjects")
+                .whereEqualTo("userId", user.uid)
+                .addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null) {
+                        subjectCount = snapshot.size()
+                    }
+                }
+
+            // Count Assignments & Calculate Average
+            db.collection("assignments")
+                .whereEqualTo("userId", user.uid)
+                .addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null) {
+                        assignmentCount = snapshot.size()
+                        val assignments = snapshot.documents.mapNotNull { it.toObject(Assignment::class.java) }
+                        val graded = assignments.filter { it.grade > 0 }
+                        gradedCount = graded.size
+                        if (graded.isNotEmpty()) {
+                            averageGrade = graded.map { it.grade }.average().toFloat()
+                        } else {
+                            averageGrade = 0.0f
+                        }
+                    }
+                }
+        }
+    }
+
     ModalDrawerSheet(modifier) {
         Column(
             modifier = Modifier
@@ -94,11 +143,11 @@ fun ProfileDrawer(
             }
             Spacer(modifier = Modifier.height(24.dp))
 
-            ProfileInfo("Subjects", "2")
+            ProfileInfo("Subjects", subjectCount.toString())
             Spacer(modifier = Modifier.height(16.dp))
-            ProfileInfo("Assignments", "2/2")
+            ProfileInfo("Assignments (Graded/Total)", "$gradedCount/$assignmentCount")
             Spacer(modifier = Modifier.height(16.dp))
-            ProfileInfo("Average", "4.0")
+            ProfileInfo("Average", String.format(Locale.US, "%.1f", averageGrade))
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -125,6 +174,70 @@ fun NotificationsDrawer(
     modifier: Modifier = Modifier,
     onAddReminder: () -> Unit = {}
 ) {
+    val db = Firebase.firestore
+    val auth = Firebase.auth
+    val user = auth.currentUser
+    val context = LocalContext.current
+    
+    var reminders by remember { mutableStateOf<List<Reminder>>(emptyList()) }
+    var editingReminder by remember { mutableStateOf<Reminder?>(null) }
+    var showDeleteConfirmation by remember { mutableStateOf<Reminder?>(null) }
+
+    LaunchedEffect(user) {
+        if (user != null) {
+            db.collection("reminders")
+                .whereEqualTo("userId", user.uid)
+                .addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null) {
+                        reminders = snapshot.documents.mapNotNull { it.toObject(Reminder::class.java) }
+                    }
+                }
+        }
+    }
+
+    if (editingReminder != null) {
+        EditReminderDialog(
+            reminder = editingReminder!!,
+            onDismiss = { editingReminder = null },
+            onSave = { updatedReminder ->
+                db.collection("reminders").document(updatedReminder.id).set(updatedReminder)
+                    .addOnSuccessListener {
+                        Toast.makeText(context, "Reminder updated", Toast.LENGTH_SHORT).show()
+                    }
+                editingReminder = null
+            }
+        )
+    }
+
+    if (showDeleteConfirmation != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = null },
+            title = { Text("Delete Reminder") },
+            text = { Text("Are you sure you want to delete this reminder?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val reminderToDelete = showDeleteConfirmation
+                        if (reminderToDelete != null) {
+                             db.collection("reminders").document(reminderToDelete.id).delete()
+                                 .addOnSuccessListener {
+                                     Toast.makeText(context, "Reminder deleted", Toast.LENGTH_SHORT).show()
+                                 }
+                        }
+                        showDeleteConfirmation = null
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     ModalDrawerSheet(modifier) {
         Column(
             modifier = Modifier
@@ -133,13 +246,16 @@ fun NotificationsDrawer(
         ) {
             Text("Notifications", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
-            Card {
+            // Static Alert Placeholder (could be system notifications in future)
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Alert", fontWeight = FontWeight.Bold)
-                    Text("Alert text goes here")
+                    Text("Welcome!", fontWeight = FontWeight.Bold)
+                    Text("Don't forget to check your assignments.")
                 }
             }
+            
             Spacer(modifier = Modifier.height(24.dp))
+            
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -151,14 +267,94 @@ fun NotificationsDrawer(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Card {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Remind title", fontWeight = FontWeight.Bold)
-                    Text("Remind date-hour")
+            
+            if (reminders.isEmpty()) {
+                Text("No reminders set.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(reminders) { reminder ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { editingReminder = reminder } // Open edit on click
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(reminder.title, fontWeight = FontWeight.Bold)
+                                    Text("${reminder.date} at ${reminder.time}", style = MaterialTheme.typography.bodySmall)
+                                }
+                                IconButton(onClick = { showDeleteConfirmation = reminder }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Reminder", tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+fun EditReminderDialog(
+    reminder: Reminder,
+    onDismiss: () -> Unit,
+    onSave: (Reminder) -> Unit
+) {
+    var title by remember { mutableStateOf(reminder.title) }
+    var date by remember { mutableStateOf(reminder.date) }
+    var time by remember { mutableStateOf(reminder.time) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Reminder") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Title") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                 // Simplified editing for date/time (text fields for now to keep it compact)
+                OutlinedTextField(
+                    value = date,
+                    onValueChange = { date = it },
+                    label = { Text("Date (YYYY-MM-DD)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = time,
+                    onValueChange = { time = it },
+                    label = { Text("Time (HH:MM)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(reminder.copy(title = title, date = date, time = time))
+                }
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable

@@ -113,8 +113,9 @@ fun AssignmentListItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(assignment.name, fontWeight = FontWeight.Bold)
-                // TODO: Load Subject Name from ID if needed, or store subjectName in Assignment
-                Text("Subject: ${assignment.subjectId}", style = MaterialTheme.typography.bodySmall) 
+                // Use subjectName if available, else fallback to subjectId
+                val subjectDisplayName = if (assignment.subjectName.isNotEmpty()) assignment.subjectName else assignment.subjectId
+                Text("Subject: $subjectDisplayName", style = MaterialTheme.typography.bodySmall)
                 Text("Grade: ${assignment.grade}", style = MaterialTheme.typography.bodySmall)
             }
             Column(horizontalAlignment = Alignment.End) {

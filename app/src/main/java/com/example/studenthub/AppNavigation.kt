@@ -113,6 +113,7 @@ fun AppNavigation() {
     val auth = Firebase.auth
 
     val onLogout: () -> Unit = {
+        scope.launch { profileDrawerState.close() }
         auth.signOut()
         navController.navigate(Screen.Login.route) {
             popUpTo(Screen.Main.route) { inclusive = true }
@@ -120,10 +121,12 @@ fun AppNavigation() {
     }
 
     val onProfileEdit: (String) -> Unit = { userId ->
+        scope.launch { profileDrawerState.close() } // Close drawer before navigating
         navController.navigate(Screen.Profile.createRoute(userId))
     }
     
     val onAddReminder: () -> Unit = {
+        scope.launch { notificationsDrawerState.close() } // Close drawer
         navController.navigate(Screen.ReminderRegistration.route)
     }
 

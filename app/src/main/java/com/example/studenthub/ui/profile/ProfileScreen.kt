@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -38,6 +39,7 @@ fun ProfileScreen(
     var degreeProgram by remember { mutableStateOf("") }
     var university by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var isGoogleAccount by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val auth: FirebaseAuth = Firebase.auth
@@ -45,19 +47,34 @@ fun ProfileScreen(
 
     LaunchedEffect(userId) {
         if (userId != null) {
+            isLoading = true
+            // Check if user is logged in via Google to hide password field later
+            val currentUser = auth.currentUser
+            if (currentUser != null) {
+                // Pre-fill with Auth data as fallback
+                if (name.isEmpty()) name = currentUser.displayName ?: ""
+                if (email.isEmpty()) email = currentUser.email ?: ""
+                
+                // Check provider
+                isGoogleAccount = currentUser.providerData.any { it.providerId == "google.com" }
+            }
+
             // Load user data from Firestore
             db.collection("users").document(userId).get()
                 .addOnSuccessListener { document ->
-                    if (document != null) {
-                        name = document.getString("name") ?: ""
-                        email = document.getString("email") ?: ""
+                    if (document != null && document.exists()) {
+                        name = document.getString("name") ?: name // Keep fallback if firestore empty
+                        email = document.getString("email") ?: email
                         phone = document.getString("phone") ?: ""
                         degreeProgram = document.getString("degreeProgram") ?: ""
                         university = document.getString("university") ?: ""
                     }
+                    isLoading = false
                 }
                 .addOnFailureListener {
-                    Toast.makeText(context, "Error loading profile", Toast.LENGTH_SHORT).show()
+                    // Even if loading fails, we might have partial data from Auth
+                    isLoading = false
+                    Toast.makeText(context, "Error loading profile details", Toast.LENGTH_SHORT).show()
                 }
         }
     }
@@ -94,18 +111,20 @@ fun ProfileScreen(
                 value = email,
                 onValueChange = { email = it },
                 label = { Text("E-mail") },
-                enabled = userId == null, // Disable editing email for existing users (simplification)
+                enabled = userId == null, // Disable editing email for existing users
                 modifier = Modifier.fillMaxWidth()
             )
             
-            if (userId == null) {
+            // Show password field only for Sign Up (userId == null) or non-Google accounts
+            if (userId == null || !isGoogleAccount) {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("Password") },
                     visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = userId == null // Disable password edit in update mode for simplicity (usually requires re-auth)
                 )
             }
 
@@ -134,7 +153,7 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.weight(1f))
             
             if (isLoading) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
             } else {
                 Button(
                     onClick = {
@@ -159,7 +178,7 @@ fun ProfileScreen(
                                                     .addOnSuccessListener {
                                                         isLoading = false
                                                         Toast.makeText(context, "Account created successfully", Toast.LENGTH_SHORT).show()
-                                                        onBack() // Go back to login or main screen
+                                                        onBack() 
                                                     }
                                                     .addOnFailureListener { e ->
                                                         isLoading = false
@@ -177,23 +196,22 @@ fun ProfileScreen(
                             }
                         } else {
                             // Update Profile Logic
-                            val userData = mapOf(
+                            val userData = hashMapOf<String, Any>(
                                 "name" to name,
                                 "phone" to phone,
                                 "degreeProgram" to degreeProgram,
                                 "university" to university
                             )
+                            // If email is somehow editable in future or logic changes, update it too
+                            // but usually email update requires specific flow.
+                            
+                            // Optimistic Update
                             db.collection("users").document(userId)
-                                .update(userData)
-                                .addOnSuccessListener {
-                                    isLoading = false
-                                    Toast.makeText(context, "Profile updated", Toast.LENGTH_SHORT).show()
-                                    onBack()
-                                }
-                                .addOnFailureListener { e ->
-                                    isLoading = false
-                                    Toast.makeText(context, "Error updating profile: ${e.message}", Toast.LENGTH_SHORT).show()
-                                }
+                                .set(userData, com.google.firebase.firestore.SetOptions.merge()) // Use merge to avoid overwriting existing fields not listed here
+                            
+                            // Immediately go back
+                            Toast.makeText(context, "Profile updated", Toast.LENGTH_SHORT).show()
+                            onBack()
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
