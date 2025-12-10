@@ -1,60 +1,122 @@
 package com.example.studenthub.ui.subjects
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import android.app.TimePickerDialog
+import android.widget.Toast
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.studenthub.data.ScheduleItem
+import com.example.studenthub.data.Teacher
 import com.example.studenthub.ui.theme.STUDENTHUBTheme
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.firestore.ktx.toObject
+import com.google.firebase.ktx.Firebase
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubjectRegistrationScreen(
     modifier: Modifier = Modifier,
-    subjectId: String? = null, // Add subjectId parameter
+    subjectId: String? = null,
     onBack: () -> Unit = {}
 ) {
     var subjectName by remember { mutableStateOf("") }
-    var teacherName by remember { mutableStateOf("") }
-    val days = listOf("Mo", "Tu", "We", "Th", "Fr", "Sa")
-    var selectedDays by remember { mutableStateOf(setOf<String>()) }
-    var showTimePicker by remember { mutableStateOf(false) }
-    var onTimeSelected: (LocalTime) -> Unit by remember { mutableStateOf({}) }
+    var selectedTeacherId by remember { mutableStateOf("") }
+    var selectedTeacherName by remember { mutableStateOf("") }
+    var scheduleList by remember { mutableStateOf<List<ScheduleItem>>(emptyList()) }
+    var teachersList by remember { mutableStateOf<List<Teacher>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) } // For initial load
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var expandedTeacherDropdown by remember { mutableStateOf(false) }
 
-    // If subjectId is not null, it means we are editing an existing subject.
-    // You would typically load the subject's data from a ViewModel or repository here.
-    LaunchedEffect(subjectId) {
-        if (subjectId != null) {
-            // TODO: Load subject data from repository
-            // For now, we'll just populate with some dummy data
-            subjectName = "Mathematics"
-            teacherName = "Mr. Smith"
-            selectedDays = setOf("Mo", "We", "Fr")
+    val context = LocalContext.current
+    val db = Firebase.firestore
+    val auth = Firebase.auth
+    val user = auth.currentUser
+
+    // List of days
+    val daysOfWeek = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+    // Load initial data (Teachers and Subject if editing)
+    LaunchedEffect(key1 = user) {
+        if (user != null) {
+            isLoading = true
+            // Load Teachers first
+            db.collection("teachers")
+                .whereEqualTo("userId", user.uid)
+                .get()
+                .addOnSuccessListener { result ->
+                    teachersList = result.documents.mapNotNull { it.toObject<Teacher>() }
+                    
+                    // If editing, load subject data
+                    if (subjectId != null) {
+                        db.collection("subjects").document(subjectId).get()
+                            .addOnSuccessListener { document ->
+                                if (document != null && document.exists()) {
+                                    subjectName = document.getString("name") ?: ""
+                                    selectedTeacherName = document.getString("teacherName") ?: ""
+                                    selectedTeacherId = document.getString("teacherId") ?: ""
+                                    
+                                    val items = document.get("schedule") as? List<Map<String, String>>
+                                    scheduleList = items?.map {
+                                        ScheduleItem(
+                                            day = it["day"] ?: "",
+                                            startTime = it["startTime"] ?: "",
+                                            endTime = it["endTime"] ?: ""
+                                        )
+                                    } ?: emptyList()
+                                }
+                                isLoading = false
+                            }
+                            .addOnFailureListener {
+                                isLoading = false
+                                Toast.makeText(context, "Error loading subject", Toast.LENGTH_SHORT).show()
+                            }
+                    } else {
+                        isLoading = false
+                    }
+                }
+                .addOnFailureListener {
+                    isLoading = false
+                    Toast.makeText(context, "Error loading teachers", Toast.LENGTH_SHORT).show()
+                }
         }
     }
 
-    if (showTimePicker) {
-        TimePickerDialog(
-            onDismissRequest = { showTimePicker = false },
-            onTimeSelected = {
-                onTimeSelected(it)
-                showTimePicker = false
+    if (showDeleteConfirmation && subjectId != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete Subject") },
+            text = { Text("Are you sure you want to delete this subject? This action cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        // Optimistic Delete
+                        db.collection("subjects").document(subjectId).delete()
+                        Toast.makeText(context, "Subject deleted", Toast.LENGTH_SHORT).show()
+                        onBack()
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -62,10 +124,17 @@ fun SubjectRegistrationScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (subjectId == null) "Subject Registration" else "Edit Subject") },
+                title = { Text(if (subjectId == null) "Add Subject" else "Edit Subject") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (subjectId != null) {
+                        IconButton(onClick = { showDeleteConfirmation = true }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete Subject")
+                        }
                     }
                 }
             )
@@ -77,154 +146,212 @@ fun SubjectRegistrationScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Text("Please enter the details of the subject below")
-            Spacer(modifier = Modifier.height(16.dp))
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+            } else {
+                Text("Please enter the details of the subject below")
+                Spacer(modifier = Modifier.height(16.dp))
 
-            OutlinedTextField(
-                value = subjectName,
-                onValueChange = { subjectName = it },
-                label = { Text("Subject name") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = teacherName,
-                onValueChange = { teacherName = it },
-                label = { Text("Teacher's name") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = subjectName,
+                    onValueChange = { subjectName = it },
+                    label = { Text("Subject's name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
 
-            Text("Schedule", style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                days.forEach { day ->
-                    FilterChip(
-                        selected = selectedDays.contains(day),
-                        onClick = {
-                            selectedDays = if (selectedDays.contains(day)) {
-                                selectedDays - day
-                            } else {
-                                selectedDays + day
-                            }
-                        },
-                        label = { Text(day) }
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-
-            selectedDays.sorted().forEach { day ->
-                var startTime by remember { mutableStateOf<LocalTime?>(null) }
-                var endTime by remember { mutableStateOf<LocalTime?>(null) }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                // Teacher Dropdown
+                ExposedDropdownMenuBox(
+                    expanded = expandedTeacherDropdown,
+                    onExpandedChange = { expandedTeacherDropdown = it },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "${day.toFullDayName()}:",
-                        modifier = Modifier.weight(0.3f)
+                    OutlinedTextField(
+                        value = selectedTeacherName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Teacher") },
+                        trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
                     )
-                    HourBox(
-                        time = startTime,
-                        onClick = {
-                            onTimeSelected = { startTime = it }
-                            showTimePicker = true
-                        },
-                        modifier = Modifier.weight(0.35f)
-                    )
-                    Text(
-                        text = "-",
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-                    HourBox(
-                        time = endTime,
-                        onClick = {
-                            onTimeSelected = { endTime = it }
-                            showTimePicker = true
-                        },
-                        modifier = Modifier.weight(0.35f)
-                    )
+                    ExposedDropdownMenu(
+                        expanded = expandedTeacherDropdown,
+                        onDismissRequest = { expandedTeacherDropdown = false }
+                    ) {
+                        if (teachersList.isEmpty()) {
+                             DropdownMenuItem(
+                                text = { Text("No teachers found. Add one first.") },
+                                onClick = { expandedTeacherDropdown = false }
+                            )
+                        } else {
+                            teachersList.forEach { teacher ->
+                                DropdownMenuItem(
+                                    text = { Text(teacher.name) },
+                                    onClick = {
+                                        selectedTeacherName = teacher.name
+                                        selectedTeacherId = teacher.id
+                                        expandedTeacherDropdown = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
 
-            Spacer(modifier = Modifier.weight(1f))
-            Button(
-                onClick = { /*TODO: Save or update subject*/ },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Save")
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Schedule", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                daysOfWeek.forEach { day ->
+                    var isChecked by remember { mutableStateOf(scheduleList.any { it.day == day }) }
+                    LaunchedEffect(scheduleList) {
+                        isChecked = scheduleList.any { it.day == day }
+                    }
+
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = { checked ->
+                                    isChecked = checked
+                                    if (checked) {
+                                        if (scheduleList.none { it.day == day }) {
+                                            scheduleList = scheduleList + ScheduleItem(day, "08:00", "10:00")
+                                        }
+                                    } else {
+                                        scheduleList = scheduleList.filter { it.day != day }
+                                    }
+                                }
+                            )
+                            Text(day, style = MaterialTheme.typography.bodyLarge)
+                        }
+
+                        if (isChecked) {
+                            val item = scheduleList.find { it.day == day }
+                            if (item != null) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 48.dp, bottom = 8.dp, end = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    TimePickerButton(
+                                        label = "Start",
+                                        time = item.startTime,
+                                        onTimeSelected = { newTime ->
+                                            if (item.endTime.isNotEmpty() && newTime >= item.endTime) {
+                                                Toast.makeText(context, "Start time must be before end time", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                scheduleList = scheduleList.map {
+                                                    if (it.day == day) it.copy(startTime = newTime) else it
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TimePickerButton(
+                                        label = "End",
+                                        time = item.endTime,
+                                        onTimeSelected = { newTime ->
+                                            if (item.startTime.isNotEmpty() && newTime <= item.startTime) {
+                                                Toast.makeText(context, "End time must be after start time", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                scheduleList = scheduleList.map {
+                                                    if (it.day == day) it.copy(endTime = newTime) else it
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Divider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 0.5.dp)
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                Button(
+                    onClick = {
+                        if (user == null) {
+                            Toast.makeText(context, "User not logged in", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+
+                        if (subjectName.isBlank()) {
+                            Toast.makeText(context, "Please enter a subject name", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+
+                        val invalidSchedule = scheduleList.any { it.startTime >= it.endTime }
+                        if (invalidSchedule) {
+                            Toast.makeText(context, "Check schedules: End time must be after Start time", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+
+                        // Fire and forget - Optimistic UX
+                        val id = subjectId ?: UUID.randomUUID().toString()
+                        val subjectData = hashMapOf(
+                            "id" to id,
+                            "name" to subjectName,
+                            "schedule" to scheduleList,
+                            "teacherName" to selectedTeacherName,
+                            "teacherId" to selectedTeacherId,
+                            "userId" to user.uid
+                        )
+
+                        db.collection("subjects").document(id).set(subjectData)
+                        
+                        Toast.makeText(context, "Subject saved", Toast.LENGTH_SHORT).show()
+                        onBack()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Save")
+                }
             }
         }
     }
 }
 
 @Composable
-fun HourBox(
-    time: LocalTime?,
-    onClick: () -> Unit,
+fun TimePickerButton(
+    label: String,
+    time: String,
+    onTimeSelected: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val formatter = remember { DateTimeFormatter.ofPattern("h:mm a") }
-    Box(
-        modifier = modifier
-            .clickable(onClick = onClick)
-            .padding(vertical = 16.dp, horizontal = 12.dp)
-    ) {
-        Text(
-            text = time?.format(formatter) ?: "Select time",
-        )
-    }
-}
+    val context = LocalContext.current
+    val parts = time.split(":")
+    val initialHour = if (parts.size == 2) parts[0].toIntOrNull() ?: 8 else 8
+    val initialMinute = if (parts.size == 2) parts[1].toIntOrNull() ?: 0 else 0
 
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TimePickerDialog(
-    onDismissRequest: () -> Unit,
-    onTimeSelected: (LocalTime) -> Unit
-) {
-    val timeState = rememberTimePickerState()
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = { Text("Select Time") },
-        text = {
-            TimePicker(state = timeState)
+    val timePickerDialog = TimePickerDialog(
+        context,
+        { _, hourOfDay, minute ->
+            val formattedTime = String.format("%02d:%02d", hourOfDay, minute)
+            onTimeSelected(formattedTime)
         },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onTimeSelected(LocalTime.of(timeState.hour, timeState.minute))
-                }
-            ) {
-                Text("OK")
-            }
-        },
-        dismissButton = {
-            Button(onClick = onDismissRequest) {
-                Text("Cancel")
-            }
-        }
+        initialHour,
+        initialMinute,
+        true
     )
-}
 
-
-fun String.toFullDayName(): String {
-    return when (this) {
-        "Mo" -> "Monday"
-        "Tu" -> "Tuesday"
-        "We" -> "Wednesday"
-        "Th" -> "Thursday"
-        "Fr" -> "Friday"
-        "Sa" -> "Saturday"
-        else -> ""
+    OutlinedButton(
+        onClick = { timePickerDialog.show() },
+        modifier = modifier
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, style = MaterialTheme.typography.labelSmall)
+            Text(time, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
-
 
 @Preview(showBackground = true)
 @Composable

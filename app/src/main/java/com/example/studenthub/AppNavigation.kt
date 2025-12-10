@@ -3,7 +3,6 @@ package com.example.studenthub
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +57,8 @@ import com.example.studenthub.ui.stats.StatsScreen
 import com.example.studenthub.ui.subjects.SubjectRegistrationScreen
 import com.example.studenthub.ui.subjects.SubjectsScreen
 import com.example.studenthub.ui.teachers.TeacherRegistrationScreen
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.launch
 
 sealed class Screen(val route: String, val icon: ImageVector? = null) {
@@ -102,116 +103,166 @@ val bottomNavItems = listOf(
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = Screen.Login.route) {
-        composable(Screen.Login.route) {
-            LoginScreen(
-                onLoginClick = { navController.navigate(Screen.Main.route) },
-                onSignUpClick = { navController.navigate(Screen.SignUp.route) }
+    // Determine start destination based on authentication state
+    val currentUser = Firebase.auth.currentUser
+    val startDestination = if (currentUser != null) Screen.Main.route else Screen.Login.route
+
+    val profileDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val notificationsDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val auth = Firebase.auth
+
+    val onLogout: () -> Unit = {
+        auth.signOut()
+        navController.navigate(Screen.Login.route) {
+            popUpTo(Screen.Main.route) { inclusive = true }
+        }
+    }
+
+    val onProfileEdit: (String) -> Unit = { userId ->
+        navController.navigate(Screen.Profile.createRoute(userId))
+    }
+    
+    val onAddReminder: () -> Unit = {
+        navController.navigate(Screen.ReminderRegistration.route)
+    }
+
+    // Wrap the entire NavHost with drawers so they are accessible from any screen
+    ModalNavigationDrawer(
+        drawerState = profileDrawerState,
+        drawerContent = {
+            ProfileDrawer(
+                onLogout = onLogout,
+                onProfileEdit = { auth.currentUser?.let { onProfileEdit(it.uid) } },
+                modifier = Modifier.fillMaxWidth(0.8f)
             )
-        }
-        composable(Screen.Main.route) {
-            MainAppScaffold(navController)
-        }
-        composable(Screen.SignUp.route) {
-            ProfileScreen(onBack = { navController.popBackStack() })
-        }
-        composable(
-            route = Screen.Profile.route,
-            arguments = listOf(navArgument("userId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val userId = backStackEntry.arguments?.getString("userId")
-            ProfileScreen(
-                userId = userId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-        composable(Screen.AssignmentRegistration.route) {
-            AssignmentRegistrationScreen(onBack = { navController.popBackStack() })
-        }
-        composable(
-            route = Screen.AssignmentEdit.route,
-            arguments = listOf(navArgument("assignmentId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val assignmentId = backStackEntry.arguments?.getString("assignmentId")
-            AssignmentRegistrationScreen(
-                assignmentId = assignmentId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-        composable(Screen.SubjectRegistration.route) {
-            SubjectRegistrationScreen(onBack = { navController.popBackStack() })
-        }
-        composable(
-            route = Screen.SubjectEdit.route,
-            arguments = listOf(navArgument("subjectId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val subjectId = backStackEntry.arguments?.getString("subjectId")
-            SubjectRegistrationScreen(
-                subjectId = subjectId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-        composable(Screen.TeacherRegistration.route) {
-            TeacherRegistrationScreen(onBack = { navController.popBackStack() })
-        }
-        composable(
-            route = Screen.TeacherEdit.route,
-            arguments = listOf(navArgument("teacherId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val teacherId = backStackEntry.arguments?.getString("teacherId")
-            TeacherRegistrationScreen(
-                teacherId = teacherId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-        composable(Screen.ReminderRegistration.route) {
-            ReminderRegistrationScreen(onBack = { navController.popBackStack() })
-        }
-        composable(
-            route = Screen.Grades.route,
-            arguments = listOf(navArgument("subjectId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val subjectId = backStackEntry.arguments?.getString("subjectId")
-            GradesScreen(
-                subjectId = subjectId ?: "",
-                onBack = { navController.popBackStack() }
-            )
+        },
+    ) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            ModalNavigationDrawer(
+                drawerState = notificationsDrawerState,
+                drawerContent = {
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                        NotificationsDrawer(
+                            onAddReminder = onAddReminder,
+                            modifier = Modifier.fillMaxWidth(0.8f)
+                        )
+                    }
+                },
+            ) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    NavHost(navController = navController, startDestination = startDestination) {
+                        composable(Screen.Login.route) {
+                            LoginScreen(
+                                onLoginClick = { 
+                                    navController.navigate(Screen.Main.route) {
+                                        popUpTo(Screen.Login.route) { inclusive = true }
+                                    }
+                                },
+                                onSignUpClick = { navController.navigate(Screen.SignUp.route) }
+                            )
+                        }
+                        composable(Screen.Main.route) {
+                            MainAppScaffold(
+                                appNavController = navController,
+                                onOpenProfile = { scope.launch { profileDrawerState.open() } },
+                                onOpenNotifications = { scope.launch { notificationsDrawerState.open() } }
+                            )
+                        }
+                        composable(Screen.SignUp.route) {
+                            ProfileScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Screen.Profile.route,
+                            arguments = listOf(navArgument("userId") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val userId = backStackEntry.arguments?.getString("userId")
+                            ProfileScreen(
+                                userId = userId,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable(Screen.AssignmentRegistration.route) {
+                            AssignmentRegistrationScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Screen.AssignmentEdit.route,
+                            arguments = listOf(navArgument("assignmentId") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val assignmentId = backStackEntry.arguments?.getString("assignmentId")
+                            AssignmentRegistrationScreen(
+                                assignmentId = assignmentId,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable(Screen.SubjectRegistration.route) {
+                            SubjectRegistrationScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Screen.SubjectEdit.route,
+                            arguments = listOf(navArgument("subjectId") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val subjectId = backStackEntry.arguments?.getString("subjectId")
+                            SubjectRegistrationScreen(
+                                subjectId = subjectId,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable(Screen.TeacherRegistration.route) {
+                            TeacherRegistrationScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Screen.TeacherEdit.route,
+                            arguments = listOf(navArgument("teacherId") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val teacherId = backStackEntry.arguments?.getString("teacherId")
+                            TeacherRegistrationScreen(
+                                teacherId = teacherId,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable(Screen.ReminderRegistration.route) {
+                            ReminderRegistrationScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Screen.Grades.route,
+                            arguments = listOf(navArgument("subjectId") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val subjectId = backStackEntry.arguments?.getString("subjectId")
+                            GradesScreen(
+                                subjectId = subjectId ?: "",
+                                onBack = { navController.popBackStack() },
+                                onOpenNotifications = { scope.launch { notificationsDrawerState.open() } }
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainAppScaffold(appNavController: NavController) {
-    val profileDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val notificationsDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
+fun MainAppScaffold(
+    appNavController: NavController,
+    onOpenProfile: () -> Unit,
+    onOpenNotifications: () -> Unit
+) {
     val bottomNavController = rememberNavController()
-
-    val onLogout: () -> Unit = {
-        appNavController.navigate(Screen.Login.route) {
-            popUpTo(Screen.Main.route) { inclusive = true }
-        }
-    }
-
-    val onProfileEdit: (String) -> Unit = { userId ->
-        appNavController.navigate(Screen.Profile.createRoute(userId))
-    }
-
-    val onAddReminder: () -> Unit = {
-        appNavController.navigate(Screen.ReminderRegistration.route)
-    }
+    val auth = Firebase.auth
+    val currentUser = auth.currentUser
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        "Student name",
-                        modifier = Modifier.clickable { scope.launch { profileDrawerState.open() } })
+                        currentUser?.displayName ?: "Student",
+                        modifier = Modifier.clickable { onOpenProfile() })
                 },
                 navigationIcon = {
-                    IconButton(onClick = { scope.launch { profileDrawerState.open() } }) {
+                    IconButton(onClick = onOpenProfile) {
                         Icon(
                             imageVector = Icons.Filled.AccountCircle,
                             contentDescription = "User Profile",
@@ -219,7 +270,7 @@ fun MainAppScaffold(appNavController: NavController) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { scope.launch { notificationsDrawerState.open() } }) {
+                    IconButton(onClick = onOpenNotifications) {
                         Icon(
                             imageVector = Icons.Filled.Notifications,
                             contentDescription = "Notifications"
@@ -260,44 +311,17 @@ fun MainAppScaffold(appNavController: NavController) {
         }
     ) { paddingValues ->
         Box(modifier = Modifier.padding(paddingValues)) {
-            ModalNavigationDrawer(
-                drawerState = profileDrawerState,
-                drawerContent = {
-                    ProfileDrawer(
-                        onLogout = onLogout,
-                        onProfileEdit = { onProfileEdit("user123") }, // Dummy user ID
-                        modifier = Modifier.fillMaxWidth(0.8f)
-                    )
-                },
+            NavHost(
+                navController = bottomNavController,
+                startDestination = Screen.Home.route,
+                modifier = Modifier.fillMaxSize()
             ) {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    ModalNavigationDrawer(
-                        drawerState = notificationsDrawerState,
-                        drawerContent = {
-                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                NotificationsDrawer(
-                                    onAddReminder = onAddReminder,
-                                    modifier = Modifier.fillMaxWidth(0.8f)
-                                )
-                            }
-                        },
-                    ) {
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            NavHost(
-                                navController = bottomNavController,
-                                startDestination = Screen.Home.route,
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                composable(Screen.Home.route) { MainScreen() }
-                                composable(Screen.Subjects.route) { SubjectsScreen(navController = appNavController) }
-                                composable(Screen.List.route) { AssignmentsScreen(navController = appNavController) }
-                                // Add other composables for bottom nav items here
-                                composable(Screen.Calendar.route) { Text("Calendar Screen") }
-                                composable(Screen.Stats.route) { StatsScreen() }
-                            }
-                        }
-                    }
-                }
+                composable(Screen.Home.route) { MainScreen() }
+                composable(Screen.Subjects.route) { SubjectsScreen(navController = appNavController) }
+                composable(Screen.List.route) { AssignmentsScreen(navController = appNavController) }
+                // Add other composables for bottom nav items here
+                composable(Screen.Calendar.route) { Text("Calendar Screen") }
+                composable(Screen.Stats.route) { StatsScreen() }
             }
         }
     }
