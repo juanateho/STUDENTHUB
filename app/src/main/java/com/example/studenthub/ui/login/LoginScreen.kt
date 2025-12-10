@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.studenthub.R
 import com.example.studenthub.ui.theme.STUDENTHUBTheme
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -65,9 +66,6 @@ fun LoginScreen(
     val auth: FirebaseAuth = Firebase.auth
     val db: FirebaseFirestore = Firebase.firestore
     val scope = rememberCoroutineScope()
-
-    // Web Client ID extraído automáticamente del google-services.json que subiste
-    val webClientId = "707828649744-jjaecd4kvb3m9sc934mrc0okjfq69jju.apps.googleusercontent.com"
 
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -214,7 +212,7 @@ fun LoginScreen(
                 OutlinedButton(
                     onClick = {
                         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                            .requestIdToken(webClientId)
+                            .requestIdToken(context.getString(R.string.default_web_client_id))
                             .requestEmail()
                             .build()
                         val googleSignInClient = GoogleSignIn.getClient(context, gso)

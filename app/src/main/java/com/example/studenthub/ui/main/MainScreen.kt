@@ -11,12 +11,15 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,11 +32,17 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.studenthub.data.Assignment
+import com.example.studenthub.data.Notification
 import com.example.studenthub.data.Reminder
 import com.example.studenthub.ui.theme.STUDENTHUBTheme
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -176,22 +185,40 @@ fun NotificationsDrawer(
 ) {
     val db = Firebase.firestore
     val auth = Firebase.auth
-    val user = auth.currentUser
     val context = LocalContext.current
-    
+
     var reminders by remember { mutableStateOf<List<Reminder>>(emptyList()) }
+    var notifications by remember { mutableStateOf<List<Notification>>(emptyList()) }
     var editingReminder by remember { mutableStateOf<Reminder?>(null) }
     var showDeleteConfirmation by remember { mutableStateOf<Reminder?>(null) }
 
-    LaunchedEffect(user) {
-        if (user != null) {
+    val authState by auth.authStateFlow().collectAsState(initial = auth.currentUser)
+
+    LaunchedEffect(authState) {
+        val currentUser = authState
+        if (currentUser != null) {
             db.collection("reminders")
-                .whereEqualTo("userId", user.uid)
-                .addSnapshotListener { snapshot, _ ->
+                .whereEqualTo("userId", currentUser.uid)
+                .addSnapshotListener { snapshot, e ->
+                    if (e != null) { return@addSnapshotListener }
                     if (snapshot != null) {
                         reminders = snapshot.documents.mapNotNull { it.toObject(Reminder::class.java) }
                     }
                 }
+
+            db.collection("notifications")
+                .whereEqualTo("userId", currentUser.uid)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(20)
+                .addSnapshotListener { snapshot, e ->
+                    if (e != null) { return@addSnapshotListener }
+                    if (snapshot != null) {
+                        notifications = snapshot.documents.mapNotNull { it.toObject(Notification::class.java) }
+                    }
+                }
+        } else {
+            reminders = emptyList()
+            notifications = emptyList()
         }
     }
 
@@ -219,10 +246,10 @@ fun NotificationsDrawer(
                     onClick = {
                         val reminderToDelete = showDeleteConfirmation
                         if (reminderToDelete != null) {
-                             db.collection("reminders").document(reminderToDelete.id).delete()
-                                 .addOnSuccessListener {
-                                     Toast.makeText(context, "Reminder deleted", Toast.LENGTH_SHORT).show()
-                                 }
+                            db.collection("reminders").document(reminderToDelete.id).delete()
+                                .addOnSuccessListener {
+                                    Toast.makeText(context, "Reminder deleted", Toast.LENGTH_SHORT).show()
+                                }
                         }
                         showDeleteConfirmation = null
                     }
@@ -243,19 +270,30 @@ fun NotificationsDrawer(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxHeight()
+                .verticalScroll(rememberScrollState())
         ) {
             Text("Notifications", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text("Recent Notifications", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
-            // Static Alert Placeholder (could be system notifications in future)
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Welcome!", fontWeight = FontWeight.Bold)
-                    Text("Don't forget to check your assignments.")
+            if (notifications.isEmpty()) {
+                Text("No recent notifications.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    notifications.forEach { notification ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(notification.title, fontWeight = FontWeight.Bold)
+                                Text(notification.message, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(24.dp))
-            
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -267,17 +305,15 @@ fun NotificationsDrawer(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             if (reminders.isEmpty()) {
                 Text("No reminders set.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(reminders) { reminder ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    reminders.forEach { reminder ->
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = { editingReminder = reminder } // Open edit on click
+                            onClick = { editingReminder = reminder }
                         ) {
                             Row(
                                 modifier = Modifier
@@ -324,7 +360,6 @@ fun EditReminderDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                 // Simplified editing for date/time (text fields for now to keep it compact)
                 OutlinedTextField(
                     value = date,
                     onValueChange = { date = it },
@@ -487,4 +522,10 @@ fun MainScreenPreview() {
     STUDENTHUBTheme {
         MainScreen()
     }
+}
+
+private fun FirebaseAuth.authStateFlow(): StateFlow<FirebaseUser?> {
+    val a = MutableStateFlow(this.currentUser)
+    this.addAuthStateListener { a.value = it.currentUser }
+    return a
 }

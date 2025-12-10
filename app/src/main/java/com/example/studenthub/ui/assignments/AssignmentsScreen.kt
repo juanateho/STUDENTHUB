@@ -1,6 +1,7 @@
 package com.example.studenthub.ui.assignments
 
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -84,7 +85,7 @@ fun AssignmentsScreen(
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
         } else {
@@ -92,7 +93,7 @@ fun AssignmentsScreen(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(assignments) { assignment -> 
+                items(assignments) { assignment ->
                     AssignmentListItem(assignment = assignment, navController = navController)
                 }
             }
@@ -106,24 +107,25 @@ fun AssignmentListItem(
     assignment: Assignment,
     navController: NavController
 ) {
-    Card(modifier = modifier.fillMaxWidth()) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { navController.navigate(Screen.AssignmentDetail.createRoute(assignment.id)) },
+    ) {
         Row(
             modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(assignment.name, fontWeight = FontWeight.Bold)
-                // Use subjectName if available, else fallback to subjectId
                 val subjectDisplayName = if (assignment.subjectName.isNotEmpty()) assignment.subjectName else assignment.subjectId
                 Text("Subject: $subjectDisplayName", style = MaterialTheme.typography.bodySmall)
-                Text("Grade: ${assignment.grade}", style = MaterialTheme.typography.bodySmall)
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(assignment.grade.toString(), fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                IconButton(onClick = { navController.navigate(Screen.AssignmentEdit.createRoute(assignment.id)) }) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit Assignment")
-                }
+            if (assignment.grade == 0f) {
+                Text("Pending", color = Color.Red, fontWeight = FontWeight.Bold)
+            } else {
+                Text(assignment.grade.toString(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
             }
         }
     }

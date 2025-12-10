@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.example.studenthub.ui.theme.STUDENTHUBTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
+import com.google.firebase.auth.ktx.userProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
@@ -54,7 +55,7 @@ fun ProfileScreen(
                 // Pre-fill with Auth data as fallback
                 if (name.isEmpty()) name = currentUser.displayName ?: ""
                 if (email.isEmpty()) email = currentUser.email ?: ""
-                
+
                 // Check provider
                 isGoogleAccount = currentUser.providerData.any { it.providerId == "google.com" }
             }
@@ -114,7 +115,7 @@ fun ProfileScreen(
                 enabled = userId == null, // Disable editing email for existing users
                 modifier = Modifier.fillMaxWidth()
             )
-            
+
             // Show password field only for Sign Up (userId == null) or non-Google accounts
             if (userId == null || !isGoogleAccount) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -151,7 +152,7 @@ fun ProfileScreen(
             )
 
             Spacer(modifier = Modifier.weight(1f))
-            
+
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
             } else {
@@ -165,25 +166,34 @@ fun ProfileScreen(
                                     .addOnCompleteListener { task ->
                                         if (task.isSuccessful) {
                                             val user = auth.currentUser
-                                            val userData = hashMapOf(
-                                                "name" to name,
-                                                "email" to email,
-                                                "phone" to phone,
-                                                "degreeProgram" to degreeProgram,
-                                                "university" to university
-                                            )
                                             user?.let {
-                                                db.collection("users").document(it.uid)
-                                                    .set(userData)
-                                                    .addOnSuccessListener {
-                                                        isLoading = false
-                                                        Toast.makeText(context, "Account created successfully", Toast.LENGTH_SHORT).show()
-                                                        onBack() 
-                                                    }
-                                                    .addOnFailureListener { e ->
-                                                        isLoading = false
-                                                        Toast.makeText(context, "Error saving user data: ${e.message}", Toast.LENGTH_SHORT).show()
-                                                    }
+                                                val profileUpdates = userProfileChangeRequest {
+                                                    displayName = name
+                                                }
+                                                it.updateProfile(profileUpdates).addOnCompleteListener { updateTask ->
+                                                    val userData = hashMapOf(
+                                                        "name" to name,
+                                                        "email" to email,
+                                                        "phone" to phone,
+                                                        "degreeProgram" to degreeProgram,
+                                                        "university" to university
+                                                    )
+                                                    db.collection("users").document(it.uid)
+                                                        .set(userData)
+                                                        .addOnSuccessListener {
+                                                            isLoading = false
+                                                            if(updateTask.isSuccessful) {
+                                                                Toast.makeText(context, "Account created successfully", Toast.LENGTH_SHORT).show()
+                                                            } else {
+                                                                Toast.makeText(context, "Account created, but failed to set display name.", Toast.LENGTH_LONG).show()
+                                                            }
+                                                            onBack()
+                                                        }
+                                                        .addOnFailureListener { e ->
+                                                            isLoading = false
+                                                            Toast.makeText(context, "Error saving user data: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                }
                                             }
                                         } else {
                                             isLoading = false
@@ -196,22 +206,38 @@ fun ProfileScreen(
                             }
                         } else {
                             // Update Profile Logic
-                            val userData = hashMapOf<String, Any>(
-                                "name" to name,
-                                "phone" to phone,
-                                "degreeProgram" to degreeProgram,
-                                "university" to university
-                            )
-                            // If email is somehow editable in future or logic changes, update it too
-                            // but usually email update requires specific flow.
-                            
-                            // Optimistic Update
-                            db.collection("users").document(userId)
-                                .set(userData, com.google.firebase.firestore.SetOptions.merge()) // Use merge to avoid overwriting existing fields not listed here
-                            
-                            // Immediately go back
-                            Toast.makeText(context, "Profile updated", Toast.LENGTH_SHORT).show()
-                            onBack()
+                            val currentUser = auth.currentUser
+                            if (currentUser != null && userId == currentUser.uid) { // Ensure we are updating the logged-in user
+                                isLoading = true
+
+                                // Update Firebase Auth display name
+                                val profileUpdates = userProfileChangeRequest {
+                                    displayName = name
+                                }
+                                currentUser.updateProfile(profileUpdates).addOnCompleteListener { authUpdateTask ->
+                                    val userData = hashMapOf<String, Any>(
+                                        "name" to name,
+                                        "phone" to phone,
+                                        "degreeProgram" to degreeProgram,
+                                        "university" to university
+                                    )
+                                    // Update Firestore
+                                    db.collection("users").document(userId)
+                                        .set(userData, com.google.firebase.firestore.SetOptions.merge())
+                                        .addOnCompleteListener { firestoreTask ->
+                                            isLoading = false
+                                            if (authUpdateTask.isSuccessful && firestoreTask.isSuccessful) {
+                                                Toast.makeText(context, "Profile updated", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Failed to update profile completely.", Toast.LENGTH_LONG).show()
+                                            }
+                                            onBack() // Go back anyway
+                                        }
+                                }
+                            } else {
+                                // This case should ideally not happen if logic is correct.
+                                Toast.makeText(context, "Cannot update profile. Not authenticated.", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth()

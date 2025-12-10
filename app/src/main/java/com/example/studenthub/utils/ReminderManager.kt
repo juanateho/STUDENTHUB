@@ -13,19 +13,21 @@ object ReminderManager {
     fun scheduleReminder(context: Context, id: String, title: String, message: String, timeInMillis: Long) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // Create base intent
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             putExtra("title", title)
             putExtra("message", message)
             putExtra("id", id.hashCode())
         }
 
-        // Schedule 24h before
-        scheduleAlarm(context, alarmManager, intent, timeInMillis - 24 * 60 * 60 * 1000, id.hashCode() + 1)
-        
+        // Schedule at the exact time
+        scheduleAlarm(context, alarmManager, intent, timeInMillis, id.hashCode())
+
         // Schedule 1h before
-        scheduleAlarm(context, alarmManager, intent, timeInMillis - 60 * 60 * 1000, id.hashCode() + 2)
-        
+        scheduleAlarm(context, alarmManager, intent, timeInMillis - 60 * 60 * 1000, id.hashCode() + 1)
+
+        // Schedule 15 min before
+        scheduleAlarm(context, alarmManager, intent, timeInMillis - 15 * 60 * 1000, id.hashCode() + 2)
+
         // Schedule 5 min before
         scheduleAlarm(context, alarmManager, intent, timeInMillis - 5 * 60 * 1000, id.hashCode() + 3)
     }

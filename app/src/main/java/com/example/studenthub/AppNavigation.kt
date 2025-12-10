@@ -1,5 +1,7 @@
 package com.example.studenthub
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,8 +46,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.studenthub.ui.assignments.AssignmentDetailScreen
 import com.example.studenthub.ui.assignments.AssignmentRegistrationScreen
 import com.example.studenthub.ui.assignments.AssignmentsScreen
+import com.example.studenthub.ui.calendar.CalendarScreen
 import com.example.studenthub.ui.grades.GradesScreen
 import com.example.studenthub.ui.login.LoginScreen
 import com.example.studenthub.ui.main.MainScreen
@@ -70,6 +74,9 @@ sealed class Screen(val route: String, val icon: ImageVector? = null) {
     }
     object Assignments : Screen("assignments")
     object AssignmentRegistration : Screen("assignment_registration")
+    object AssignmentDetail : Screen("assignment_detail/{assignmentId}") {
+        fun createRoute(assignmentId: String): String = "assignment_detail/$assignmentId"
+    }
     object AssignmentEdit : Screen("assignment_edit/{assignmentId}") {
         fun createRoute(assignmentId: String): String = "assignment_edit/$assignmentId"
     }
@@ -100,6 +107,7 @@ val bottomNavItems = listOf(
     Screen.Subjects
 )
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
@@ -189,6 +197,16 @@ fun AppNavigation() {
                             AssignmentRegistrationScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
+                            route = Screen.AssignmentDetail.route,
+                            arguments = listOf(navArgument("assignmentId") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val assignmentId = backStackEntry.arguments?.getString("assignmentId")
+                            AssignmentDetailScreen(
+                                assignmentId = assignmentId ?: "",
+                                navController = navController
+                            )
+                        }
+                        composable(
                             route = Screen.AssignmentEdit.route,
                             arguments = listOf(navArgument("assignmentId") { type = NavType.StringType })
                         ) { backStackEntry ->
@@ -246,6 +264,7 @@ fun AppNavigation() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun MainAppScaffold(
     appNavController: NavController,
@@ -322,8 +341,7 @@ fun MainAppScaffold(
                 composable(Screen.Home.route) { MainScreen() }
                 composable(Screen.Subjects.route) { SubjectsScreen(navController = appNavController) }
                 composable(Screen.List.route) { AssignmentsScreen(navController = appNavController) }
-                // Add other composables for bottom nav items here
-                composable(Screen.Calendar.route) { Text("Calendar Screen") }
+                composable(Screen.Calendar.route) { CalendarScreen() }
                 composable(Screen.Stats.route) { StatsScreen() }
             }
         }
